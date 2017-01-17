@@ -1,0 +1,5 @@
+services:
+  salesforce_soap.client:
+    class: Drupal\salesforce\SoapClient
+    # is it possible we don't need any args? Probably not. 
+    # arguments: ['@http_client', '@config.factory', '@url_generator', '@state']

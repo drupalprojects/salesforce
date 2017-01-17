@@ -1,0 +1,7 @@
+name: Salesforce SOAP
+type: module
+description: SOAP API implementation, primarily for batch push jobs.
+package: Salesforce
+core: 8.x
+dependencies:
+  - salesforce_push
