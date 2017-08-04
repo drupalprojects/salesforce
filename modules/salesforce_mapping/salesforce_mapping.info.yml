@@ -6,3 +6,4 @@ core: 8.x
 configure: entity.salesforce_mapping.list
 dependencies:
   - salesforce
+  - typed_data
