@@ -4,9 +4,16 @@ namespace Drupal\salesforce_mapping\Plugin\SalesforceMappingField;
 
 use Drupal\Core\Entity\EntityInterface;
 use Drupal\Core\Form\FormStateInterface;
+use Drupal\Core\Url;
 use Drupal\salesforce_mapping\SalesforceMappingFieldPluginBase;
 use Drupal\salesforce_mapping\Entity\SalesforceMappingInterface;
 use Drupal\field\Entity\FieldConfig;
+use Drupal\Core\Plugin\Context\ContextDefinition;
+use Drupal\Core\TypedData\TypedDataTrait;
+use Drupal\typed_data\Form\SubformState;
+use Drupal\typed_data\Util\StateTrait;
+use Drupal\typed_data\Widget\FormWidgetManagerTrait;
+
 
 /**
  * Adapter for entity properties and fields.
@@ -18,29 +25,59 @@ use Drupal\field\Entity\FieldConfig;
  */
 class Properties extends SalesforceMappingFieldPluginBase {
 
+  use FormWidgetManagerTrait;
+  use StateTrait;
+  use TypedDataTrait;
+
   /**
    * Implementation of PluginFormInterface::buildConfigurationForm.
    */
   public function buildConfigurationForm(array $form, FormStateInterface $form_state) {
     $pluginForm = parent::buildConfigurationForm($form, $form_state);
-    // @TODO inspecting the form and form_state feels wrong, but haven't found a good way to get the entity from config before the config is saved.
-    $options = $this->getConfigurationOptions($form['#entity']);
+
+    $mapping = $form['#entity'];
 
     // Display the plugin config form here:
-    if (empty($options)) {
-      $pluginForm['drupal_field_value'] = [
-        '#markup' => t('No available properties.'),
-      ];
+    $context_name = 'drupal_field_value';
+    // If the form has been submitted already take the mode from the submitted
+    // values, otherwise default to existing configuration. And if that does not
+    // exist default to the "input" mode.
+    $mode = $form_state->get('context_' . $context_name);
+    if (!$mode) {
+      if (isset($configuration['context_mapping'][$context_name])) {
+        $mode = 'selector';
+      }
+      else {
+        $mode = 'input';
+      }
+      $form_state->set('context_' . $context_name, $mode);
     }
-    else {
-      $pluginForm['drupal_field_value'] += [
-        '#type' => 'select',
-        '#options' => $options,
-        '#empty_option' => $this->t('- Select -'),
-        '#default_value' => $this->config('drupal_field_value'),
-        '#description' => $this->t('Select a Drupal field or property to map to a Salesforce field.<br />Entity Reference fields should be handled using Related Entity Ids or Token field types.'),
-      ];
+    $title = $mode == 'selector' ? $this->t('Data selector') : $this->t('Value');
+
+    $pluginForm[$context_name]['setting'] = [
+      '#type' => 'textfield',
+      '#title' => $title,
+      '#default_value' => $this->config('drupal_field_value'),
+    ];
+    $element = &$pluginForm[$context_name]['setting'];
+    if ($mode == 'selector') {
+      $element['#description'] = $this->t("The data selector helps you drill down into the data available.");
+      $url = Url::fromRoute('salesforce_mapping.autocomplete_controller_autocomplete', ['entity_type_id' => $mapping->get('drupal_entity_type'), 'bundle' => $mapping->get('drupal_bundle')]);
+      $element['#attributes']['class'][] = 'salesforce-mapping-autocomplete';
+      $element['#attributes']['data-autocomplete-path'] = $url->toString();
+      $element['#attached']['library'][] = 'salesforce_mapping/salesforce_mapping.autocomplete';
     }
+    $value = $mode == 'selector' ? $this->t('Switch to the direct input mode') : $this->t('Switch to data selection');
+    $pluginForm[$context_name]['switch_button'] = [
+      '#type' => 'submit',
+      '#name' => 'context_' . $context_name,
+      '#attributes' => ['class' => ['drupal-field-switch-button']],
+      '#parameter' => $context_name,
+      '#value' => $value,
+      '#submit' => [static::class . '::switchContextMode'],
+      // Do not validate!
+      '#limit_validation_errors' => [],
+    ];
 
     return $pluginForm;
   }
@@ -70,28 +107,6 @@ class Properties extends SalesforceMappingFieldPluginBase {
   }
 
   /**
-   *
-   */
-  private function getConfigurationOptions(SalesforceMappingInterface $mapping) {
-    $properties = $this->entityFieldManager->getFieldDefinitions(
-      $mapping->get('drupal_entity_type'),
-      $mapping->get('drupal_bundle')
-    );
-
-    $options = [];
-    foreach ($properties as $key => $property) {
-      // Entity reference fields are handled elsewhere.
-      // @TODO: is this type still a thing even?
-      if ($property->getType() == 'field_item:entity_reference') {
-        continue;
-      }
-      $options[$key] = $property->getLabel();
-    }
-    asort($options);
-    return $options;
-  }
-
-  /**
    * {@inheritdoc}
    *
    * @return array
@@ -105,6 +120,17 @@ class Properties extends SalesforceMappingFieldPluginBase {
     return [
       'config' => array($field_config->getConfigDependencyName()),
     ];
+  }
+
+  /**
+   * Submit callback: switch a context to data selecor or direct input mode.
+   */
+  public static function switchContextMode(array &$form, FormStateInterface $form_state) {
+    $element_name = $form_state->getTriggeringElement()['#name'];
+    $mode = $form_state->get($element_name);
+    $switched_mode = $mode == 'selector' ? 'input' : 'selector';
+    $form_state->set($element_name, $switched_mode);
+    $form_state->setRebuild();
   }
 
 }

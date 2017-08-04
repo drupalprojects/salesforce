@@ -80,3 +80,11 @@ entity.salesforce_mapped_object.edit:
 #   requirements:
 #     _permission: 'administer views'
 #     op: 'enable|disable'
+
+salesforce_mapping.autocomplete_controller_autocomplete:
+  path: '/salesforce_mapping/autocomplete/{entity_type_id}/{bundle}'
+  defaults:
+    _controller: '\Drupal\salesforce_mapping\Controller\AutocompleteController::autocomplete'
+    _format: json
+  requirements:
+    _permission: 'administer salesforce mapped objects'
